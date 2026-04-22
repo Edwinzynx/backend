@@ -1,0 +1,10 @@
+# Core
+fastapi
+uvicorn
+python-multipart
+numpy
+opencv-python
+
+# Testing
+pytest
+httpx
