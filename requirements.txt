@@ -4,6 +4,7 @@ uvicorn
 python-multipart
 numpy
 opencv-python
+psycopg2-binary
 
 # Testing
 pytest

@@ -1,38 +1,47 @@
-import sqlite3
+import psycopg2
 import json
 import numpy as np
 import os
+from psycopg2.extras import execute_values
 
-DB_NAME = os.getenv("DB_PATH", "faces.db")
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+def get_connection():
+    return psycopg2.connect(DATABASE_URL)
 
 def init_db():
-    # Ensure the directory exists
-    db_dir = os.path.dirname(DB_NAME)
-    if db_dir and not os.path.exists(db_dir):
-        os.makedirs(db_dir, exist_ok=True)
-        
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS students
-                 (student_id TEXT PRIMARY KEY, embedding TEXT)''')
+    conn = get_connection()
+    cur = conn.cursor()
+    # Create table for face embeddings if it doesn't exist
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS face_embeddings (
+            student_id TEXT PRIMARY KEY,
+            embedding TEXT NOT NULL
+        )
+    ''')
     conn.commit()
+    cur.close()
     conn.close()
 
 def save_embedding(student_id, embedding):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    # Convert numpy array to list then to json string
+    conn = get_connection()
+    cur = conn.cursor()
     embedding_json = json.dumps(embedding.tolist())
-    c.execute("INSERT OR REPLACE INTO students (student_id, embedding) VALUES (?, ?)",
-              (student_id, embedding_json))
+    cur.execute("""
+        INSERT INTO face_embeddings (student_id, embedding)
+        VALUES (%s, %s)
+        ON CONFLICT (student_id) DO UPDATE SET embedding = EXCLUDED.embedding
+    """, (student_id, embedding_json))
     conn.commit()
+    cur.close()
     conn.close()
 
 def get_all_embeddings():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT student_id, embedding FROM students")
-    rows = c.fetchall()
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT student_id, embedding FROM face_embeddings")
+    rows = cur.fetchall()
+    cur.close()
     conn.close()
     
     embeddings = {}
@@ -41,16 +50,18 @@ def get_all_embeddings():
     return embeddings
 
 def check_embedding_exists(student_id: str) -> bool:
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('SELECT 1 FROM students WHERE student_id = ?', (student_id,))
-    exists = c.fetchone() is not None
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM face_embeddings WHERE student_id = %s", (student_id,))
+    exists = cur.fetchone() is not None
+    cur.close()
     conn.close()
     return exists
 
 def delete_embedding(student_id: str):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('DELETE FROM students WHERE student_id = ?', (student_id,))
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM face_embeddings WHERE student_id = %s", (student_id,))
     conn.commit()
+    cur.close()
     conn.close()
